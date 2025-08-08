@@ -1,5 +1,5 @@
 import streamlit as st
-import geemap.foliumap as geemap
+import geemap.folium as geemap
 import ee
 
 # Initialize Earth Engine
@@ -51,4 +51,5 @@ st.subheader(health_status)
 Map = geemap.Map(center=(lat, lon), zoom=12)
 Map.addLayer(ndvi, {'min': 0, 'max': 1, 'palette': ['brown', 'yellow', 'green']}, 'NDVI')
 Map.add_marker(location=[lat, lon], popup=health_status) # Corrected method name
+
 Map.to_streamlit()
