@@ -1,69 +1,99 @@
 import streamlit as st
 import ee
 import geemap.foliumap as geemap
+import pandas as pd
+from io import BytesIO
 
-# Load secrets from Streamlit
+# ---------------------
+# STREAMLIT PAGE CONFIG
+# ---------------------
+st.set_page_config(layout="wide", page_title="Vegetation Health Classifier")
+
+# ---------------------
+# AUTHENTICATE EARTH ENGINE
+# ---------------------
 SERVICE_ACCOUNT = st.secrets["google_earth_engine"]["client_email"]
 PRIVATE_KEY = st.secrets["google_earth_engine"]["private_key"]
 
-# Authenticate Earth Engine using service account
 credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT, key_data=PRIVATE_KEY)
 ee.Initialize(credentials)
 
-st.title("🌱 Vegetation Health Dashboard (NDVI)")
+# ---------------------
+# APP TITLE
+# ---------------------
+st.title("🌱 Vegetation Health Classification from CSV Coordinates")
 
-# Example: Sentinel-2 NDVI for given lat/lon
-lat = st.number_input("Enter Latitude", value=22.5726)   # Default Kolkata
-lon = st.number_input("Enter Longitude", value=88.3639)  # Default Kolkata
+# ---------------------
+# CSV UPLOAD
+# ---------------------
+uploaded_file = st.file_uploader("Upload CSV with 'latitude' and 'longitude' columns", type="csv")
 
-# Date range
-start_date = st.date_input("Start Date", value=ee.Date("2024-01-01").format().getInfo())
-end_date = st.date_input("End Date", value=ee.Date("2024-01-31").format().getInfo())
+start_date = st.date_input("Start Date", value=pd.to_datetime("2024-01-01"))
+end_date = st.date_input("End Date", value=pd.to_datetime("2024-01-31"))
 
-if st.button("Generate NDVI Map"):
-    point = ee.Geometry.Point(lon, lat)
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
 
-    # Load Sentinel-2 surface reflectance
-    collection = (
-        ee.ImageCollection("COPERNICUS/S2_SR")
-        .filterBounds(point)
-        .filterDate(str(start_date), str(end_date))
-        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10))
-    )
-
-    # Compute NDVI
-    def add_ndvi(img):
-        ndvi = img.normalizedDifference(["B8", "B4"]).rename("NDVI")
-        return img.addBands(ndvi)
-
-    ndvi_collection = collection.map(add_ndvi)
-    ndvi_image = ndvi_collection.median()
-
-    # Visualization parameters
-    ndvi_params = {"min": -1, "max": 1, "palette": ["blue", "white", "green"]}
-
-    # Create map
-    Map = geemap.Map(center=[lat, lon], zoom=12)
-    Map.addLayer(ndvi_image.select("NDVI"), ndvi_params, "NDVI")
-    Map.addLayer(point, {"color": "red"}, "Location")
-    Map.addLayerControl()
-    Map.to_streamlit(width=900, height=600)
-
-    # Get mean NDVI value
-    mean_ndvi = ndvi_image.select("NDVI").reduceRegion(
-        reducer=ee.Reducer.mean(),
-        geometry=point.buffer(30),  # 30m radius
-        scale=10
-    ).get("NDVI").getInfo()
-
-    if mean_ndvi is not None:
-        st.success(f"Mean NDVI at location: {mean_ndvi:.3f}")
-        if mean_ndvi > 0.5:
-            st.write("✅ Healthy vegetation")
-        elif mean_ndvi > 0.2:
-            st.write("⚠ Moderately healthy vegetation")
-        else:
-            st.write("❌ Unhealthy vegetation")
+    # Check required columns
+    if not {"latitude", "longitude"}.issubset(df.columns):
+        st.error("CSV must have 'latitude' and 'longitude' columns")
     else:
-        st.warning("No NDVI data available for this location and date range.")
+        st.success(f"Loaded {len(df)} locations from CSV.")
 
+        results = []
+        Map = geemap.Map(center=[df["latitude"].mean(), df["longitude"].mean()], zoom=6)
+        
+        for idx, row in df.iterrows():
+            lat, lon = row["latitude"], row["longitude"]
+            point = ee.Geometry.Point(lon, lat)
+
+            # Load Sentinel-2
+            collection = (
+                ee.ImageCollection("COPERNICUS/S2_SR")
+                .filterBounds(point)
+                .filterDate(str(start_date), str(end_date))
+                .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10))
+            )
+
+            def add_ndvi(img):
+                ndvi = img.normalizedDifference(["B8", "B4"]).rename("NDVI")
+                return img.addBands(ndvi)
+
+            ndvi_img = collection.map(add_ndvi).median()
+            mean_ndvi = ndvi_img.select("NDVI").reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=point.buffer(30),
+                scale=10
+            ).get("NDVI").getInfo()
+
+            # Classify
+            if mean_ndvi is None:
+                status = "No Data"
+                color = "gray"
+            elif mean_ndvi > 0.5:
+                status = "Healthy"
+                color = "green"
+            elif mean_ndvi > 0.2:
+                status = "Moderately Healthy"
+                color = "orange"
+            else:
+                status = "Non-Healthy"
+                color = "red"
+
+            results.append({"latitude": lat, "longitude": lon, "NDVI": mean_ndvi, "Status": status})
+
+            # Add point to map
+            Map.addMarker(location=[lat, lon], popup=f"NDVI: {mean_ndvi:.3f if mean_ndvi else 'N/A'}\nStatus: {status}", icon_color=color)
+
+        # Convert results to DataFrame
+        result_df = pd.DataFrame(results)
+
+        # Display map and table
+        Map.to_streamlit(width="100%", height=600)
+        st.subheader("Classification Results")
+        st.dataframe(result_df)
+
+        # Download results
+        csv_buffer = BytesIO()
+        result_df.to_csv(csv_buffer, index=False)
+        st.download_button("Download Results CSV", data=csv_buffer.getvalue(), file_name="ndvi_classification.csv", mime="text/csv")
