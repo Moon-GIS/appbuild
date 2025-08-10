@@ -47,7 +47,7 @@ if st.button("Generate NDVI Map"):
     Map.addLayer(ndvi_image.select("NDVI"), ndvi_params, "NDVI")
     Map.addLayer(point, {"color": "red"}, "Location")
     Map.addLayerControl()
-    Map.to_streamlit(height=600)
+    Map.to_streamlit(width=900, height=600)
 
     # Get mean NDVI value
     mean_ndvi = ndvi_image.select("NDVI").reduceRegion(
@@ -66,3 +66,4 @@ if st.button("Generate NDVI Map"):
             st.write("❌ Unhealthy vegetation")
     else:
         st.warning("No NDVI data available for this location and date range.")
+
