@@ -23,7 +23,7 @@ ee.Initialize(credentials)
 # ---------------------
 # TITLE
 # ---------------------
-st.title("🌱 Vegetation Health Classification from CSV Coordinates")
+st.title("🌱 Vegetation Health Classification from CSV Coordinates + NDVI Background")
 
 # ---------------------
 # FILE UPLOAD
@@ -36,35 +36,48 @@ end_date = st.date_input("End Date", value=pd.to_datetime("2024-01-31"))
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 
-    # Check required columns
     if not {"latitude", "longitude"}.issubset(df.columns):
         st.error("CSV must have 'latitude' and 'longitude' columns")
     else:
         st.success(f"Loaded {len(df)} locations from CSV.")
 
         results = []
-        Map = geemap.Map(center=[df["latitude"].mean(), df["longitude"].mean()], zoom=6)
 
+        # --- Create geemap Map ---
+        m = geemap.Map(center=[df["latitude"].mean(), df["longitude"].mean()], zoom=6)
+
+        # --- Create NDVI background layer ---
+        s2_collection = (
+            ee.ImageCollection("COPERNICUS/S2_SR")
+            .filterBounds(ee.Geometry.Point(df["longitude"].mean(), df["latitude"].mean()))
+            .filterDate(str(start_date), str(end_date))
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10))
+        )
+
+        def add_ndvi(img):
+            ndvi = img.normalizedDifference(["B8", "B4"]).rename("NDVI")
+            return img.addBands(ndvi)
+
+        ndvi_img = s2_collection.map(add_ndvi).median().select("NDVI")
+
+        # Visualization parameters for NDVI
+        ndvi_vis = {
+            "min": 0.0,
+            "max": 1.0,
+            "palette": ["red", "yellow", "green"]
+        }
+
+        m.add_layer(ndvi_img, ndvi_vis, "NDVI Background")
+
+        # --- Loop over CSV points and add markers ---
         for idx, row in df.iterrows():
             lat, lon = row["latitude"], row["longitude"]
             point = ee.Geometry.Point(lon, lat)
 
-            # Load Sentinel-2 imagery
-            collection = (
-                ee.ImageCollection("COPERNICUS/S2_SR")
-                .filterBounds(point)
-                .filterDate(str(start_date), str(end_date))
-                .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10))
-            )
-
-            def add_ndvi(img):
-                ndvi = img.normalizedDifference(["B8", "B4"]).rename("NDVI")
-                return img.addBands(ndvi)
-
-            ndvi_img = collection.map(add_ndvi).median()
-            mean_ndvi = ndvi_img.select("NDVI").reduceRegion(
+            # NDVI at point
+            mean_ndvi = ndvi_img.reduceRegion(
                 reducer=ee.Reducer.mean(),
-                geometry=point.buffer(30),  # 30m radius
+                geometry=point.buffer(30),
                 scale=10
             ).get("NDVI").getInfo()
 
@@ -88,23 +101,37 @@ if uploaded_file:
 
             results.append({"latitude": lat, "longitude": lon, "NDVI": ndvi_str, "Status": status})
 
-            # Add marker to map
-            popup_text = f"NDVI: {ndvi_str}\nStatus: {status}"
-            Map = folium.Map(location=[df["latitude"].mean(), df["longitude"].mean()], zoom_start=6)
+            # Add folium marker to same map
             folium.Marker(
                 location=[lat, lon],
-                popup=popup_text,
+                popup=f"NDVI: {ndvi_str}\nStatus: {status}",
                 icon=folium.Icon(color=color)
-            ).add_to(Map)
-            st_folium(Map, width="100%", height=600)
+            ).add_to(m)
 
-        # Show map and table
-        Map.to_streamlit(width="100%", height=600)
+        # --- Add legend ---
+        legend_html = """
+        <div style="position: fixed; 
+                    bottom: 50px; left: 50px; width: 180px; height: 130px; 
+                    border:2px solid grey; z-index:9999; font-size:14px;
+                    background-color:white; padding: 10px;">
+        <b>Legend</b><br>
+        <i class="fa fa-map-marker" style="color:green"></i> Healthy<br>
+        <i class="fa fa-map-marker" style="color:orange"></i> Moderately Healthy<br>
+        <i class="fa fa-map-marker" style="color:red"></i> Non-Healthy<br>
+        <i class="fa fa-map-marker" style="color:gray"></i> No Data
+        </div>
+        """
+        m.get_root().html.add_child(folium.Element(legend_html))
+
+        # --- Show map ---
+        st_folium(m, width="100%", height=600)
+
+        # --- Show results table ---
         st.subheader("Classification Results")
         result_df = pd.DataFrame(results)
         st.dataframe(result_df)
 
-        # Download button
+        # --- Download button ---
         csv_buffer = BytesIO()
         result_df.to_csv(csv_buffer, index=False)
         st.download_button(
@@ -113,5 +140,3 @@ if uploaded_file:
             file_name="ndvi_classification.csv",
             mime="text/csv"
         )
-
-
