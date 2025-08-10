@@ -4,3 +4,5 @@ geopandas
 pandas
 numpy
 streamlit_folium
+geemap
+earthengine-api
