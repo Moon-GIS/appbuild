@@ -89,11 +89,8 @@ if uploaded_file:
 
             # Add marker to map
             popup_text = f"NDVI: {ndvi_str}\nStatus: {status}"
-            folium.Marker(
-                location=[lat, lon],
-                popup=popup_text,
-                icon=folium.Icon(color=color)
-            ).add_to(Map)
+            marker = folium.Marker(location=[lat, lon], popup=popup_text, icon=folium.Icon(color=color))
+            Map.add_child(marker)
 
         # Show map and table
         Map.to_streamlit(width="100%", height=600)
@@ -110,3 +107,4 @@ if uploaded_file:
             file_name="ndvi_classification.csv",
             mime="text/csv"
         )
+
