@@ -1,56 +1,24 @@
 import streamlit as st
-import geemap
-import folium
-from folium import plugins
 import ee
+import geemap.foliumap as geemap
 
-# Initialize Earth Engine
- 
-service_account = st.secrets["google_earth_engine"]["client_email"]
-credentials = ee.ServiceAccountCredentials(service_account, st.secrets["google_earth_engine"])
+# Load secrets from Streamlit
+SERVICE_ACCOUNT = st.secrets["google_earth_engine"]["service_account"]
+PRIVATE_KEY = st.secrets["google_earth_engine"]["private_key"]
+
+# Authenticate Earth Engine using service account
+credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT, key_data=PRIVATE_KEY)
 ee.Initialize(credentials)
 
+st.title("Google Earth Engine in Streamlit (Service Account)")
 
-st.set_page_config(page_title="NDVI Checker", layout="wide")
+# Example: Load and display a satellite image
+dataset = ee.Image('COPERNICUS/S2_SR/20210701T043601_20210701T043603_T46QDD') \
+            .select(['B4', 'B3', 'B2'])  # RGB bands
 
-st.title("🌱 NDVI Vegetation Health Checker")
+Map = geemap.Map(center=[27.7, 85.3], zoom=8)  # Example: Kathmandu
+vis_params = {'min': 0, 'max': 3000, 'bands': ['B4', 'B3', 'B2']}
+Map.addLayer(dataset, vis_params, "Sentinel-2 RGB")
+Map.addLayerControl()
 
-# Input coordinates
-lat = st.number_input("Latitude", value=22.5726, format="%.6f")
-lon = st.number_input("Longitude", value=88.3639, format="%.6f")
-
-if st.button("Check NDVI"):
-    # Sentinel-2 image collection
-    collection = ee.ImageCollection("COPERNICUS/S2_SR") \
-        .filterBounds(ee.Geometry.Point(lon, lat)) \
-        .filterDate('2024-01-01', '2024-12-31') \
-        .sort('CLOUDY_PIXEL_PERCENTAGE') \
-        .first()
-    
-    if collection:
-        ndvi_img = collection.normalizedDifference(['B8', 'B4']).rename('NDVI')
-        ndvi_value = ndvi_img.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=ee.Geometry.Point(lon, lat),
-            scale=10
-        ).get('NDVI').getInfo()
-
-        st.write(f"📍 **Latitude:** {lat}, **Longitude:** {lon}")
-        st.write(f"🌿 **NDVI Value:** {ndvi_value:.3f}")
-
-        if ndvi_value >= 0.6:
-            st.success("Healthy vegetation 🌱")
-        elif ndvi_value >= 0.3:
-            st.warning("Moderate vegetation 🍂")
-        else:
-            st.error("Unhealthy vegetation 🚨")
-
-        # Show map
-        m = folium.Map(location=[lat, lon], zoom_start=12)
-        folium.Marker([lat, lon], popup="Selected Location").add_to(m)
-        map_html = m._repr_html_()
-        st.components.v1.html(map_html, height=500)
-    else:
-        st.error("No satellite image found for this location/date range.")
-
-
+Map.to_streamlit(height=600)
