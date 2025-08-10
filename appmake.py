@@ -3,6 +3,7 @@ import ee
 import geemap.foliumap as geemap
 import pandas as pd
 from io import BytesIO
+import folium
 
 # ---------------------
 # STREAMLIT PAGE CONFIG
@@ -83,7 +84,13 @@ if uploaded_file:
             results.append({"latitude": lat, "longitude": lon, "NDVI": mean_ndvi, "Status": status})
 
             # Add point to map
-            Map.addmarker(location=[lat, lon], popup=f"NDVI: {mean_ndvi:.3f if mean_ndvi else 'N/A'}\nStatus: {status}", icon_color=color)
+            popup_text = f"NDVI: {mean_ndvi:.3f if mean_ndvi else 'N/A'}\nStatus: {status}"
+            folium.Marker(
+                location=[lat, lon],
+                popup=popup_text,
+                icon=folium.Icon(color=color)
+            ).add_to(Map)
+
 
         # Convert results to DataFrame
         result_df = pd.DataFrame(results)
@@ -97,4 +104,5 @@ if uploaded_file:
         csv_buffer = BytesIO()
         result_df.to_csv(csv_buffer, index=False)
         st.download_button("Download Results CSV", data=csv_buffer.getvalue(), file_name="ndvi_classification.csv", mime="text/csv")
+
 
