@@ -6,3 +6,4 @@ numpy
 streamlit_folium
 geemap
 earthengine-api
+ee
