@@ -3,6 +3,7 @@ import ee
 import geemap.foliumap as geemap
 import pandas as pd
 import folium
+from streamlit_folium import st_folium
 from io import BytesIO
 
 # ---------------------
@@ -89,8 +90,13 @@ if uploaded_file:
 
             # Add marker to map
             popup_text = f"NDVI: {ndvi_str}\nStatus: {status}"
-            marker = folium.Marker(location=[lat, lon], popup=popup_text, icon=folium.Icon(color=color))
-            Map.add_child(marker)
+            Map = folium.Map(location=[df["latitude"].mean(), df["longitude"].mean()], zoom_start=6)
+            folium.Marker(
+                location=[lat, lon],
+                popup=popup_text,
+                icon=folium.Icon(color=color)
+            ).add_to(Map)
+            st_folium(Map, width="100%", height=600)
 
         # Show map and table
         Map.to_streamlit(width="100%", height=600)
@@ -107,4 +113,5 @@ if uploaded_file:
             file_name="ndvi_classification.csv",
             mime="text/csv"
         )
+
 
