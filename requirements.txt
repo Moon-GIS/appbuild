@@ -4,6 +4,5 @@ geopandas
 pandas
 numpy
 streamlit_folium
-geemap
-earthengine-api
-ee
+geemap>=0.30.3
+earthengine-api>=0.1.399
