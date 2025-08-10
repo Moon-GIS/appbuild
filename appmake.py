@@ -5,11 +5,11 @@ from folium import plugins
 import ee
 
 # Initialize Earth Engine
-try:
-    ee.Initialize()
-except Exception as e:
-    ee.Authenticate()
-    ee.Initialize()
+ 
+service_account = st.secrets["google_earth_engine"]["client_email"]
+credentials = ee.ServiceAccountCredentials(service_account, st.secrets["google_earth_engine"])
+ee.Initialize(credentials)
+
 
 st.set_page_config(page_title="NDVI Checker", layout="wide")
 
@@ -52,4 +52,5 @@ if st.button("Check NDVI"):
         st.components.v1.html(map_html, height=500)
     else:
         st.error("No satellite image found for this location/date range.")
+
 
