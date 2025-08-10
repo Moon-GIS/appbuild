@@ -83,7 +83,7 @@ if uploaded_file:
             results.append({"latitude": lat, "longitude": lon, "NDVI": mean_ndvi, "Status": status})
 
             # Add point to map
-            Map.addMarker(location=[lat, lon], popup=f"NDVI: {mean_ndvi:.3f if mean_ndvi else 'N/A'}\nStatus: {status}", icon_color=color)
+            Map.addmarker(location=[lat, lon], popup=f"NDVI: {mean_ndvi:.3f if mean_ndvi else 'N/A'}\nStatus: {status}", icon_color=color)
 
         # Convert results to DataFrame
         result_df = pd.DataFrame(results)
@@ -97,3 +97,4 @@ if uploaded_file:
         csv_buffer = BytesIO()
         result_df.to_csv(csv_buffer, index=False)
         st.download_button("Download Results CSV", data=csv_buffer.getvalue(), file_name="ndvi_classification.csv", mime="text/csv")
+
